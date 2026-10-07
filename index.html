@@ -380,20 +380,53 @@ function showProqolSummary(summary){
  <div class="results-interpretation"><p>Your results reflect your current experience at work; it is not a fixed trait. Scores can change with changes in your job, role, organisation, or personal circumstances.</p><p class="results-disclaimer">Disclaimer: This tool is for research and self-reflection purposes only. It is not a clinical instrument.</p></div>`;
 }
 async function submitAll(){
- const data={timestamp:new Date().toISOString(),responses:{}};
- for(let i=1;i<=123;i++){const v=localStorage.getItem(`q${i}`);if(v!==null)data.responses[`Q${i}`]=v}
- data.responses.Attention_A=localStorage.getItem('Attention_A')||'';data.responses.Attention_B=localStorage.getItem('Attention_B')||'';data.responses.Q4_Other=localStorage.getItem('Q4_Other')||'';
- const profession=data.responses.Q3||'';data.responses.Profession=professionName(profession);
- const summary=proqolSummary(data.responses);
-  const btn=form.querySelector('.primary');btn.disabled=true;btn.textContent='Submitting…';
- try{
-  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),25000);
-  const res=await fetch(APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(data),redirect:'follow',signal:ctrl.signal});
-  clearTimeout(timer);
-  const out=await res.json().catch(()=>({}));
-  if(!res.ok||!out.ok)throw new Error(out.error||('HTTP '+res.status));
-  showProqolSummary(summary);localStorage.clear();document.getElementById('questionnaire').classList.add('hidden');document.getElementById('done').classList.remove('hidden');document.getElementById('bar').style.width='0';document.getElementById('progressText').textContent='';window.scrollTo({top:0,behavior:'smooth'});
- }catch(e){console.error('Submit failed:',e);btn.disabled=false;btn.textContent='Submit questionnaire';alert('We could not submit your responses. Please check your internet connection. Your answers remain stored in this browser until submission succeeds.');}
+  const data = {timestamp:new Date().toISOString(), responses:{}};
+
+  // Collect all questionnaire responses
+  for(let i=1;i<=123;i++){
+    const v=localStorage.getItem(`q${i}`);
+    if(v!==null) data.responses[`Q${i}`]=v;
+  }
+
+  data.responses.Attention_A=localStorage.getItem('Attention_A')||'';
+  data.responses.Attention_B=localStorage.getItem('Attention_B')||'';
+  data.responses.Q4_Other=localStorage.getItem('Q4_Other')||'';
+
+  const profession=data.responses.Q3||'';
+  data.responses.Profession=professionName(profession);
+
+  // Calculate the result immediately in the browser
+  const summary=proqolSummary(data.responses);
+
+  if(APPS_SCRIPT_URL.includes('PASTE_YOUR')){
+    alert('The questionnaire is ready, but the Google Sheets connection has not been configured yet. Please follow the setup guide.');
+    return;
+  }
+
+  // Disable button immediately
+  const btn=form.querySelector('.primary');
+  btn.disabled=true;
+  btn.textContent='Submitting…';
+
+  // Show final result immediately
+  showProqolSummary(summary);
+  localStorage.clear();
+
+  document.getElementById('questionnaire').classList.add('hidden');
+  document.getElementById('done').classList.remove('hidden');
+  document.getElementById('bar').style.width='0';
+  document.getElementById('progressText').textContent='';
+  window.scrollTo({top:0,behavior:'smooth'});
+
+  // Save response to Google Sheets in the background
+  fetch(APPS_SCRIPT_URL,{
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(data)
+  }).catch(e=>{
+    console.error('Submission failed:',e);
+  });
 }
 document.getElementById('beginBtn').addEventListener('click',()=>{
   const consent=document.getElementById('consent');

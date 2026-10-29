@@ -96,6 +96,19 @@ h1,h2,.welcome-title,.group-subheading,.result-card h3{font-family:'Playfair Dis
 .result-definition{font-size:13px;line-height:1.5;color:#5d7185;margin-bottom:13px}
 @media(max-width:600px){.result-grid{grid-template-columns:1fr}.result-card{padding:16px}.result-header{gap:8px}.result-card h3{font-size:19px;max-width:70%;line-height:1.18}.result-score{min-width:66px;padding:6px 7px;font-size:17px;flex:0 0 auto}}
 
+/* Participant code: step-by-step layout */
+.code-intro{margin:0 0 14px;color:#536a7e;font-size:14px}
+.code-parts{display:grid;gap:10px;margin:0 0 14px}
+.code-part{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e2ebf4;border-radius:12px;padding:11px 13px}
+.code-num{flex:0 0 30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;font-family:'Open Sans',Arial,sans-serif}
+.code-part-text{font-size:14px;color:var(--ink);line-height:1.4}
+.code-part-text small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.code-join{margin:0 0 14px;font-size:14px;font-weight:700;color:var(--blue2)}
+.code-example{margin-top:0}
+.code-example-title{font-size:12px;font-weight:800;letter-spacing:.06em;color:#385d82;margin-bottom:8px;font-family:'Open Sans',Arial,sans-serif}
+.code-example-row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:5px 0;border-bottom:1px dashed #e2ebf4}
+.code-example-row:last-child{border-bottom:0}
+.code-example-final{font-weight:800;color:#385d82;font-size:16px}
 </style>
 </head><body><main class="wrap">
 <section id="welcome" class="welcome-page">
@@ -269,12 +282,40 @@ function renderParticipantCode(card){
  const heading=document.createElement('div');heading.className='group-subheading participant-code-heading';heading.textContent='Participant Code';card.appendChild(heading);
  const participant=document.createElement('div');participant.className='question';
  const description=document.createElement('div');description.className='code-instructions';
- description.innerHTML='<p>If you choose to participate in the 3-month and 6-month follow-up questionnaires, this participant code will be used instead of your name or contact details to link your responses across all three assessments.</p><p>You can easily recreate the same code when needed, so you will not need to provide your name or contact details again.</p><p><strong>The number of letters in your first name + the last two letters of your mother\'s first name + the month you were born in (01–12).</strong></p><div class="code-example"><strong>Example:</strong> first name Priya (5), mother Lakshmi (mi), born in March (03) → <strong>5mi03</strong></div>';
+description.innerHTML=`
+  <p class="code-intro">This code lets us link your responses across the 3 assessments without using your name. You can recreate it any time.</p>
+  <div class="code-parts">
+    <div class="code-part"><div class="code-num">1</div><div class="code-part-text"><strong>Number of letters in your first name</strong><small>Count only the letters</small></div></div>
+    <div class="code-part"><div class="code-num">2</div><div class="code-part-text"><strong>Last two letters of your mother's first name</strong><small>Use lowercase letters</small></div></div>
+    <div class="code-part"><div class="code-num">3</div><div class="code-part-text"><strong>Month you were born in</strong><small>Always two digits (01 to 12)</small></div></div>
+  </div>
+  <div class="code-join">Write 1 + 2 + 3 together, with no spaces.</div>
+  <div class="code-example">
+    <div class="code-example-title">EXAMPLE</div>
+    <div class="code-example-row"><span>1. First name: Priya (5 letters)</span><strong>5</strong></div>
+    <div class="code-example-row"><span>2. Mother's name: Lakshmi (last two letters)</span><strong>mi</strong></div>
+    <div class="code-example-row"><span>3. Born in March</span><strong>03</strong></div>
+    <div class="code-example-row"><span>Your code</span><span class="code-example-final">5mi03</span></div>
+  </div>`;
  participant.appendChild(description);
  const label=document.createElement('div');label.className='qtext';label.innerHTML='12. Participant code <span class="req">*</span>';participant.appendChild(label);
  const input=document.createElement('input');input.className='text-input';input.name='q12';input.required=true;input.type='text';input.placeholder='e.g., 5mi03';participant.appendChild(input);
  card.appendChild(participant);
 }
+function getDeviceId(){
+ let id=localStorage.getItem('wb_device_id');
+ if(!id){id=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('d'+Date.now()+Math.random().toString(36).slice(2));localStorage.setItem('wb_device_id',id);}
+ return id;
+}
+function renderSectorQuestion(card){
+ const box=document.createElement('div');box.className='question';
+ const qt=document.createElement('div');qt.className='qtext';
+ qt.innerHTML='<span>9a. Which sector are you currently working in?</span> <span class="req">*</span>';
+ box.appendChild(qt);
+ const select=document.createElement('select');select.className='demographic-select';select.name='sector';select.required=true;
+ [['','Select an option'],['Public sector','Public sector'],['Private sector','Private sector']].forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;select.appendChild(o);});
+ box.appendChild(select);card.appendChild(box);
+} 
 function renderSection(){
  const group=displayGroups[currentSectionIndex],qs=questionsForGroup(group);form.innerHTML='';
  const card=document.createElement('section');card.className='card';
@@ -294,6 +335,7 @@ function renderSection(){
   else if(!textQuestions.has(q.id))box.appendChild(makeScaleOptions(q));
   if(q.id===4){const other=document.createElement('input');other.className='text-input hidden';other.id='q4_other';other.name='Q4_Other';other.placeholder='Please specify';other.style.marginTop='10px';box.appendChild(other);box.querySelector('select[name="q4"]').addEventListener('change',e=>{other.classList.toggle('hidden',e.target.value!=='Other');other.required=e.target.value==='Other';});}
   card.appendChild(box);
+  if(q.id===9)renderSectorQuestion(card);
   if(q.id===39)card.appendChild(attentionBlock('A','For this item, please select <strong>3</strong> to show you are paying attention.',attentionOptions(7,['Strongly disagree','Disagree','Slightly disagree','Neither agree nor disagree','Slightly agree','Agree','Strongly agree'])));
   if(q.id===79)card.appendChild(attentionBlock('B','Please select <strong>almost never (1)</strong> for this item if you are paying attention.',attentionOptions(5,['Almost never','Rarely','Sometimes','Often','Almost always'])));
  });
@@ -353,6 +395,7 @@ function questionLabel(name){
    const id=Number(name.slice(1));
    return `Question ${id}`;
  }
+ if(name==='sector')return 'the question on sector (public or private)';
  if(name==='Attention_A')return 'the attention-check item A';
  if(name==='Attention_B')return 'the attention-check item B';
  if(name==='Q4_Other')return 'the response for Question 4 (Other)';
@@ -391,6 +434,8 @@ async function submitAll(){
   data.responses.Attention_A=localStorage.getItem('Attention_A')||'';
   data.responses.Attention_B=localStorage.getItem('Attention_B')||'';
   data.responses.Q4_Other=localStorage.getItem('Q4_Other')||'';
+  data.responses.Sector=localStorage.getItem('sector')||'';
+  data.deviceId=getDeviceId();
 
   const profession=data.responses.Q3||'';
   data.responses.Profession=professionName(profession);
@@ -411,7 +456,8 @@ async function submitAll(){
   // Show final result immediately
   showProqolSummary(summary);
   localStorage.clear();
-
+  localStorage.setItem('wb_submitted','yes');
+  localStorage.setItem('wb_device_id',data.deviceId);
   document.getElementById('questionnaire').classList.add('hidden');
   document.getElementById('done').classList.remove('hidden');
   document.getElementById('bar').style.width='0';
@@ -429,6 +475,7 @@ async function submitAll(){
   });
 }
 document.getElementById('beginBtn').addEventListener('click',()=>{
+  if(localStorage.getItem('wb_submitted')==='yes'){alert('Your response has already been recorded. Thank you for your participation.');return;}
   const consent=document.getElementById('consent');
   const err=document.getElementById('consentError');
   if(!consent.checked){err.style.display='block';consent.focus();return;}

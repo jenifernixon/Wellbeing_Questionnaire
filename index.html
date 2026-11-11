@@ -475,7 +475,6 @@ async function submitAll(){
   });
 }
 document.getElementById('beginBtn').addEventListener('click',()=>{
-  if(localStorage.getItem('wb_submitted')==='yes'){alert('Your response has already been recorded. Thank you for your participation.');return;}
   const consent=document.getElementById('consent');
   const err=document.getElementById('consentError');
   if(!consent.checked){err.style.display='block';consent.focus();return;}

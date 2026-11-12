@@ -109,6 +109,17 @@ h1,h2,.welcome-title,.group-subheading,.result-card h3{font-family:'Playfair Dis
 .code-example-row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:5px 0;border-bottom:1px dashed #e2ebf4}
 .code-example-row:last-child{border-bottom:0}
 .code-example-final{font-weight:800;color:#385d82;font-size:16px}
+
+/* Submission status */
+#submitLoading{position:fixed;inset:0;z-index:9999;background:rgba(245,248,252,.92);display:flex;align-items:center;justify-content:center;padding:22px}
+#submitLoading.hidden{display:none!important}
+.submit-loading-card{width:min(100%,390px);padding:30px 24px;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);text-align:center}
+.submit-spinner{width:48px;height:48px;margin:0 auto 17px;border:5px solid #e5edf6;border-top-color:var(--blue);border-radius:50%;animation:submitSpin .8s linear infinite}
+@keyframes submitSpin{to{transform:rotate(360deg)}}
+.submit-loading-title{font-weight:800;font-size:18px;margin-bottom:6px;color:var(--ink)}
+.submit-loading-copy{font-size:14px;color:var(--muted);margin:0}
+.submit-error{margin:14px 0;padding:13px 15px;border:1px solid #f0b8b4;background:#fff4f3;color:var(--danger);border-radius:12px;font-size:14px}
+
 </style>
 </head><body><main class="wrap">
 <section id="welcome" class="welcome-page">
@@ -175,9 +186,19 @@ h1,h2,.welcome-title,.group-subheading,.result-card h3{font-family:'Playfair Dis
   <div class="top"><div class="brand">PROFESSIONAL WELL-BEING</div><h1>Questionnaire</h1></div>
   <section class="intro"><div class="progress"><div id="bar" class="bar"></div></div><div id="progressText" class="small">Page 1</div></section>
   <form id="form" novalidate></form>
+  <div id="submitError" class="submit-error hidden" role="alert"></div>
 </section>
 
 <section id="done" class="card hidden"><div class="success"><h2>Thank you for participating!</h2><p>Your responses have been recorded successfully.</p><div id="proqolSummary"></div><p>You will be invited to complete the follow-up assessments at approximately 3 months and 6 months. Each follow-up assessment will take approximately 2–5 minutes.</p><p><strong>For questions about the study:</strong><br>Ms Jenifer Nixon, PhD Scholar<br>Department of Management Studies, IIT Madras<br><a href="mailto:ms23d003@smail.iitm.ac.in">ms23d003@smail.iitm.ac.in</a></p></div></section>
+
+<div id="submitLoading" class="hidden" role="status" aria-live="polite" aria-label="Saving your responses">
+  <div class="submit-loading-card">
+    <div class="submit-spinner" aria-hidden="true"></div>
+    <div class="submit-loading-title">Submitting your responses</div>
+    <p class="submit-loading-copy">Please wait while we save your responses. Do not close this page.</p>
+  </div>
+</div>
+
 </main>
 <script>
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwNIBzo3yoPV0ksNnuTVvkCQ3XOcL1xh8hakg2GpiYxV0n3QYYONjHb93YmJ-B1aw1S/exec";
@@ -425,7 +446,7 @@ function showProqolSummary(summary){
 async function submitAll(){
   const data = {timestamp:new Date().toISOString(), responses:{}};
 
-  // Collect all questionnaire responses
+  // Collect all questionnaire responses from this browser.
   for(let i=1;i<=123;i++){
     const v=localStorage.getItem(`q${i}`);
     if(v!==null) data.responses[`Q${i}`]=v;
@@ -436,43 +457,91 @@ async function submitAll(){
   data.responses.Q4_Other=localStorage.getItem('Q4_Other')||'';
   data.responses.Sector=localStorage.getItem('sector')||'';
   data.deviceId=getDeviceId();
+  data.responses.Profession=professionName(data.responses.Q3||'');
 
-  const profession=data.responses.Q3||'';
-  data.responses.Profession=professionName(profession);
-
-  // Calculate the result immediately in the browser
-  const summary=proqolSummary(data.responses);
+  // Reuse the same ID on retries so the server can prevent duplicate rows.
+  let submissionId=localStorage.getItem('wb_submission_id');
+  if(!submissionId){
+    submissionId=(window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'submission-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+    localStorage.setItem('wb_submission_id',submissionId);
+  }
+  data.submissionId=submissionId;
 
   if(APPS_SCRIPT_URL.includes('PASTE_YOUR')){
     alert('The questionnaire is ready, but the Google Sheets connection has not been configured yet. Please follow the setup guide.');
     return;
   }
 
-  // Disable button immediately
   const btn=form.querySelector('.primary');
-  btn.disabled=true;
-  btn.textContent='Submitting…';
+  const loader=document.getElementById('submitLoading');
+  const errorBox=document.getElementById('submitError');
 
-  // Show final result immediately
-  showProqolSummary(summary);
-  localStorage.clear();
-  localStorage.setItem('wb_submitted','yes');
-  localStorage.setItem('wb_device_id',data.deviceId);
-  document.getElementById('questionnaire').classList.add('hidden');
-  document.getElementById('done').classList.remove('hidden');
-  document.getElementById('bar').style.width='0';
-  document.getElementById('progressText').textContent='';
-  window.scrollTo({top:0,behavior:'smooth'});
+  if(btn){btn.disabled=true;btn.textContent='Submitting…';}
+  if(errorBox){errorBox.textContent='';errorBox.classList.add('hidden');}
+  loader.classList.remove('hidden');
 
-  // Save response to Google Sheets in the background
-  fetch(APPS_SCRIPT_URL,{
-    method:'POST',
-    mode:'no-cors',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify(data)
-  }).catch(e=>{
-    console.error('Submission failed:',e);
-  });
+  try{
+    // Do not use no-cors: it produces an opaque response that cannot be checked.
+    // Apps Script must return JSON confirming that the sheet write succeeded.
+    const response=await fetch(APPS_SCRIPT_URL,{
+      method:'POST',
+      mode:'cors',
+      redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(data)
+    });
+
+    if(!response.ok){
+      throw new Error(`The server returned HTTP ${response.status}.`);
+    }
+
+    const responseText=await response.text();
+    let result;
+    try{
+      result=JSON.parse(responseText);
+    }catch(parseError){
+      throw new Error('The server did not return a valid JSON confirmation.');
+    }
+
+    // The supplied Apps Script currently returns {ok:true} after all three
+    // appendRow() calls complete, and {ok:false,error:"..."} if an exception occurs.
+    const saved=result && result.ok===true;
+    if(!saved){
+      throw new Error((result && (result.error || result.message)) ||
+        'Google Sheets did not confirm that the responses were saved.');
+    }
+
+    // Only show the thank-you screen after the server confirms the save.
+    const summary=proqolSummary(data.responses);
+    showProqolSummary(summary);
+
+    // Clear questionnaire answers only after confirmed success.
+    for(let i=1;i<=123;i++) localStorage.removeItem(`q${i}`);
+    ['Attention_A','Attention_B','Q4_Other','sector','wb_submission_id'].forEach(k=>localStorage.removeItem(k));
+    localStorage.setItem('wb_submitted','yes');
+    localStorage.setItem('wb_device_id',data.deviceId);
+
+    loader.classList.add('hidden');
+    document.getElementById('questionnaire').classList.add('hidden');
+    document.getElementById('done').classList.remove('hidden');
+    document.getElementById('bar').style.width='0';
+    document.getElementById('progressText').textContent='';
+    window.scrollTo({top:0,behavior:'smooth'});
+
+  }catch(e){
+    console.error('Submission was not confirmed:',e);
+    loader.classList.add('hidden');
+    if(btn){btn.disabled=false;btn.textContent='Submit questionnaire';}
+    if(errorBox){
+      errorBox.textContent='We could not confirm that your responses were saved. Your answers have not been cleared from this browser. Please check your internet connection and try submitting again. If this problem continues, contact the researcher. ('+e.message+')';
+      errorBox.classList.remove('hidden');
+      errorBox.scrollIntoView({behavior:'smooth',block:'center'});
+    }else{
+      alert('We could not confirm that your responses were saved. Your answers remain in this browser. Please try again.');
+    }
+  }
 }
 document.getElementById('beginBtn').addEventListener('click',()=>{
   const consent=document.getElementById('consent');
